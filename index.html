@@ -4,7 +4,7 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<meta name="theme-color" content="#f4f3ed">
-	<title>號碼轉盤 | 1–19 抽取</title>
+	<title>號碼轉盤 | 自訂號碼抽取</title>
 	<link rel="stylesheet" href="css.css">
 	<script src="js.js" defer></script>
 </head>
@@ -16,7 +16,7 @@
 				<span>NUMBER DRAW</span>
 			</a>
 			<div class="topbar-tools">
-				<p class="topbar-note">不重複抽選 <span aria-hidden="true">/</span> 1—19</p>
+				<p class="topbar-note">自訂號碼 <span aria-hidden="true">/</span> 不重複抽選</p>
 				<label class="sound-setting" for="sound-toggle">
 					<input id="sound-toggle" type="checkbox" checked>
 					<span class="sound-switch" aria-hidden="true"></span>
@@ -53,7 +53,7 @@
 				<aside class="draw-panel" aria-label="抽獎資訊">
 					<div class="panel-topline">
 						<p class="eyebrow">DRAW CONTROL</p>
-						<span class="round-count">已抽 <span id="draw-count">0</span> / 19</span>
+						<span class="round-count">已抽 <span id="draw-count">0</span> / <span id="total-count">19</span></span>
 					</div>
 
 					<div class="result-block" aria-live="polite" aria-atomic="true">
@@ -72,6 +72,24 @@
 
 					<div class="panel-divider"></div>
 
+					<section class="number-management" aria-labelledby="manage-title">
+						<div class="management-heading">
+							<h2 id="manage-title">新增號碼</h2>
+							<span id="save-status" aria-live="polite">尚無待保存變更</span>
+						</div>
+						<form class="number-entry" id="number-form">
+							<label class="visually-hidden" for="number-input">要新增的正整數號碼</label>
+							<input id="number-input" type="number" min="1" step="1" placeholder="輸入正整數" required>
+							<label class="visually-hidden" for="number-destination">新增到清單</label>
+							<select id="number-destination">
+								<option value="remaining">待抽</option>
+								<option value="winners">已抽</option>
+							</select>
+							<button class="add-number-button" type="submit">新增</button>
+						</form>
+						<button class="save-button" id="save-button" type="button" disabled>保存變更</button>
+					</section>
+
 					<section class="remaining-section" aria-labelledby="remaining-title">
 						<div class="list-heading">
 							<h2 id="remaining-title">待抽號碼</h2>
@@ -86,7 +104,7 @@
 							<span class="history-count" id="history-count">0</span>
 						</div>
 						<ol class="winner-list" id="winner-list" aria-live="polite">
-							  <li class="empty-history">抽出的號碼會顯示在這裡</li>
+								<li class="empty-history">抽出的號碼會顯示在這裡</li>
 						</ol>
 					</section>
 				</aside>
@@ -95,7 +113,7 @@
 
 		<footer class="page-footer">
 			<span>MAKE THIS MOMENT COUNT</span>
-			<span>1 — 19 <span class="footer-star" aria-hidden="true">✳</span> DRAW</span>
+			<span>NUMBER POOL <span class="footer-star" aria-hidden="true">✳</span> DRAW</span>
 		</footer>
 	</div>
 
@@ -105,7 +123,10 @@
 				<h2 id="dialog-title">抽出號碼</h2>
 				<p class="dialog-number" id="dialog-number">--</p>
 				<p class="dialog-copy">確認後，這個號碼才會從轉盤移除。</p>
-				<button class="confirm-button" id="confirm-draw" type="button">確認並移除號碼</button>
+				<div class="dialog-actions">
+					<button class="cancel-draw-button" id="cancel-draw" type="button">取消本次抽選</button>
+					<button class="confirm-button" id="confirm-draw" type="button">確認並移除號碼</button>
+				</div>
 			</div>
 		</dialog>
 </body>

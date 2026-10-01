@@ -1,6 +1,7 @@
 const startingNumbers = Array.from({ length: 19 }, (_, index) => index + 1);
 const segmentColors = ["#287c70", "#f16d50", "#485c52", "#d99b3d", "#347d8b", "#cf765d"];
 const spinDuration = 5600;
+const storageKey = "number-draw-state-v1";
 
 const wheel = document.querySelector(".wheel");
 const segments = document.querySelector(".wheel-segments");
@@ -11,18 +12,54 @@ const resultMessage = document.querySelector("#result-message");
 const resultDialog = document.querySelector("#result-dialog");
 const dialogNumber = document.querySelector("#dialog-number");
 const confirmDrawButton = document.querySelector("#confirm-draw");
+const cancelDrawButton = document.querySelector("#cancel-draw");
 const soundToggle = document.querySelector("#sound-toggle");
 const numberList = document.querySelector("#number-list");
 const winnerList = document.querySelector("#winner-list");
 const remainingCount = document.querySelector("#remaining-count");
 const historyCount = document.querySelector("#history-count");
 const drawCount = document.querySelector("#draw-count");
+const totalCount = document.querySelector("#total-count");
+const numberForm = document.querySelector("#number-form");
+const numberInput = document.querySelector("#number-input");
+const numberDestination = document.querySelector("#number-destination");
+const saveButton = document.querySelector("#save-button");
+const saveStatus = document.querySelector("#save-status");
 
-let remainingNumbers = [...startingNumbers];
-let winners = [];
+let hasSavedState = false;
+
+function loadSavedState() {
+	try {
+		const storedValue = localStorage.getItem(storageKey);
+		if (storedValue === null) {
+			return { remainingNumbers: [...startingNumbers], winners: [] };
+		}
+		const savedState = JSON.parse(storedValue);
+		if (!Array.isArray(savedState?.remainingNumbers) || !Array.isArray(savedState?.winners)) {
+			return { remainingNumbers: [...startingNumbers], winners: [] };
+		}
+
+		const allNumbers = [...savedState.remainingNumbers, ...savedState.winners];
+		const isValid = allNumbers.every((number) => Number.isSafeInteger(number) && number > 0)
+			&& new Set(allNumbers).size === allNumbers.length;
+		if (!isValid) {
+			return { remainingNumbers: [...startingNumbers], winners: [] };
+		}
+
+		hasSavedState = true;
+		return { remainingNumbers: savedState.remainingNumbers, winners: savedState.winners };
+	} catch {
+		return { remainingNumbers: [...startingNumbers], winners: [] };
+	}
+}
+
+const savedState = loadSavedState();
+let remainingNumbers = savedState.remainingNumbers;
+let winners = savedState.winners;
 let rotation = 0;
 let isSpinning = false;
 let pendingWinner = null;
+let hasUnsavedChanges = false;
 let spinTimer;
 let audioContext;
 let spinSoundTimer;
@@ -158,6 +195,8 @@ function renderLists() {
 	remainingNumbers.forEach((number) => {
 		const item = document.createElement("li");
 		item.textContent = String(number);
+		const deleteButton = createDeleteButton(number, "remaining");
+		item.append(deleteButton);
 		numberList.append(item);
 	});
 
@@ -172,10 +211,13 @@ function renderLists() {
 			const item = document.createElement("li");
 			const winner = document.createElement("span");
 			const round = document.createElement("span");
+			const details = document.createElement("span");
 			winner.textContent = `號碼 ${number}`;
 			round.className = "winner-round";
 			round.textContent = `第 ${index + 1} 抽`;
-			item.append(winner, round);
+			details.className = "winner-details";
+			details.append(winner, round);
+			item.append(details, createDeleteButton(number, "winners"));
 			winnerList.append(item);
 		});
 	}
@@ -183,8 +225,99 @@ function renderLists() {
 	remainingCount.textContent = String(remainingNumbers.length);
 	historyCount.textContent = String(winners.length);
 	drawCount.textContent = String(winners.length);
+	totalCount.textContent = String(remainingNumbers.length + winners.length);
 	drawButton.disabled = isSpinning || pendingWinner !== null || remainingNumbers.length === 0;
 	resetButton.disabled = isSpinning || pendingWinner !== null;
+	numberInput.disabled = isSpinning || pendingWinner !== null;
+	numberDestination.disabled = isSpinning || pendingWinner !== null;
+	numberForm.querySelector("button").disabled = isSpinning || pendingWinner !== null;
+	numberList.querySelectorAll("button").forEach((button) => {
+		button.disabled = isSpinning || pendingWinner !== null;
+	});
+	winnerList.querySelectorAll("button").forEach((button) => {
+		button.disabled = isSpinning || pendingWinner !== null;
+	});
+	saveButton.disabled = !hasUnsavedChanges || isSpinning || pendingWinner !== null;
+}
+
+function createDeleteButton(number, listName) {
+	const button = document.createElement("button");
+	button.type = "button";
+	button.className = "delete-number-button";
+	button.setAttribute("aria-label", `刪除${listName === "remaining" ? "待抽" : "已抽"}號碼 ${number}`);
+	button.textContent = "×";
+	button.addEventListener("click", () => deleteNumber(number, listName));
+	return button;
+}
+
+function markUnsaved() {
+	hasUnsavedChanges = true;
+	saveStatus.textContent = "有尚未保存的變更";
+	updateSaveState();
+}
+
+function updateSaveState() {
+	saveButton.disabled = !hasUnsavedChanges || isSpinning || pendingWinner !== null;
+}
+
+function saveState() {
+	try {
+		localStorage.setItem(storageKey, JSON.stringify({ remainingNumbers, winners }));
+		hasUnsavedChanges = false;
+		saveStatus.textContent = "已保存至本機";
+		updateSaveState();
+	} catch {
+		saveStatus.textContent = "保存失敗，請檢查瀏覽器儲存空間";
+	}
+}
+
+function addNumber(event) {
+	event.preventDefault();
+	const number = Number(numberInput.value);
+	if (!Number.isSafeInteger(number) || number < 1) {
+		window.alert("請輸入大於 0 的整數。");
+		return;
+	}
+	if ([...remainingNumbers, ...winners].includes(number)) {
+		const existingList = remainingNumbers.includes(number) ? "待抽" : "已抽";
+		window.alert(`號碼 ${number} 已存在於${existingList}清單，無法重複新增。`);
+		return;
+	}
+
+	const destination = numberDestination.value;
+	const destinationLabel = destination === "remaining" ? "待抽" : "已抽";
+	if (!window.confirm(`確定將號碼 ${number} 新增至${destinationLabel}清單？`)) {
+		return;
+	}
+
+	if (destination === "remaining") {
+		remainingNumbers.push(number);
+	} else {
+		winners.unshift(number);
+	}
+	numberInput.value = "";
+	markUnsaved();
+	resultMessage.textContent = `號碼 ${number} 已加入${destinationLabel}清單，請保存變更。`;
+	renderWheel();
+	renderLists();
+}
+
+function deleteNumber(number, listName) {
+	const list = listName === "remaining" ? remainingNumbers : winners;
+	const listLabel = listName === "remaining" ? "待抽" : "已抽";
+	if (!window.confirm(`確定從${listLabel}清單刪除號碼 ${number}？`)) {
+		return;
+	}
+
+	const index = list.indexOf(number);
+	if (index === -1) {
+		return;
+	}
+	list.splice(index, 1);
+	markUnsaved();
+	resultMessage.textContent = `號碼 ${number} 已從${listLabel}清單刪除，請保存變更。`;
+	renderWheel();
+	renderLists();
 }
 
 function finishDraw(winner) {
@@ -214,8 +347,18 @@ function confirmDraw() {
 	renderLists();
 
 	if (remainingNumbers.length === 0) {
-		resultMessage.textContent = "1 到 19 號已全部抽出。";
+		resultMessage.textContent = "所有號碼已全部抽出。";
 	}
+	markUnsaved();
+}
+
+function cancelDraw() {
+	if (pendingWinner === null) {
+		return;
+	}
+	pendingWinner = null;
+	resultMessage.textContent = "本次抽選已取消，號碼仍保留在轉盤中。";
+	renderLists();
 }
 
 function startDraw() {
@@ -248,6 +391,9 @@ function resetDraw() {
 	if (isSpinning || pendingWinner !== null) {
 		return;
 	}
+	if (!window.confirm("確定重置抽獎？待抽號碼將恢復為 1 到 19，抽獎紀錄會清空。")) {
+		return;
+	}
 
 	clearTimeout(spinTimer);
 	remainingNumbers = [...startingNumbers];
@@ -259,14 +405,36 @@ function resetDraw() {
 	wheel.style.transition = "";
 	resultNumber.textContent = "--";
 	resultMessage.textContent = "準備好揭曉了嗎？";
+	saveStatus.textContent = "有尚未保存的變更";
+	markUnsaved();
 	renderWheel();
 	renderLists();
 }
 
 drawButton.addEventListener("click", startDraw);
 resetButton.addEventListener("click", resetDraw);
-confirmDrawButton.addEventListener("click", () => resultDialog.close());
-resultDialog.addEventListener("close", confirmDraw);
+numberForm.addEventListener("submit", addNumber);
+saveButton.addEventListener("click", saveState);
+confirmDrawButton.addEventListener("click", () => resultDialog.close("confirm"));
+cancelDrawButton.addEventListener("click", () => resultDialog.close("cancel"));
+resultDialog.addEventListener("cancel", (event) => {
+	event.preventDefault();
+	resultDialog.close("cancel");
+});
+resultDialog.addEventListener("close", () => {
+	if (resultDialog.returnValue === "confirm") {
+		confirmDraw();
+	} else {
+		cancelDraw();
+	}
+});
+window.addEventListener("beforeunload", (event) => {
+	if (!hasUnsavedChanges) {
+		return;
+	}
+	event.preventDefault();
+	event.returnValue = "";
+});
 soundToggle.addEventListener("change", () => {
 	if (!soundToggle.checked) {
 		stopSpinSound();
@@ -277,3 +445,6 @@ soundToggle.addEventListener("change", () => {
 
 renderWheel();
 renderLists();
+if (hasSavedState) {
+	saveStatus.textContent = "已載入本機保存內容";
+}
